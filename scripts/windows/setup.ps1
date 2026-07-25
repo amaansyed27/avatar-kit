@@ -10,6 +10,9 @@ $venv = Join-Path $env:AVATARKIT_HOME 'environments\backend'; if ($Repair -and (
 & "$venv\Scripts\python.exe" -m pip install --upgrade pip; & "$venv\Scripts\python.exe" -m pip install -e "$root\backend[dev]"
 Push-Location "$root\frontend"; npm install; npm run build; Pop-Location
 if ($InstallModels) {
+  if ($Repair) {
+    'sadtalker-py39','chatterbox' | ForEach-Object { $engineEnv = Join-Path $env:AVATARKIT_HOME "environments\$_"; if (Test-Path $engineEnv) { Remove-Item -Recurse -Force $engineEnv } }
+  }
   $apiPython = "$venv\Scripts\python.exe"
   Push-Location "$root\backend"
   & $apiPython -c "from app.engines.sadtalker import SadTalkerAvatarEngine as E; E().install(); E().ensure_models()"
