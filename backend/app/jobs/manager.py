@@ -83,7 +83,7 @@ class JobManager:
             process.terminate()
             try:
                 await asyncio.wait_for(process.wait(), timeout=8)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 process.kill()
                 await process.wait()
         await self.emit(job_id, "Cancelled", "cancelled")
