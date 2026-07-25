@@ -89,6 +89,14 @@ def install(engine_id: str) -> dict:
         raise HTTPException(500, {"code": "ENGINE_INSTALL_FAILED", "detail": str(exc)}) from exc
 
 
+@app.post("/api/v1/engines/{engine_id}/models")
+def models(engine_id: str) -> dict:
+    item = manager.engines.get(engine_id)
+    if not item: raise HTTPException(404, "Unknown engine")
+    try: return vars(item.ensure_models())
+    except Exception as exc: raise HTTPException(500, {"code": "MODEL_DOWNLOAD_FAILED", "detail": str(exc)}) from exc
+
+
 @app.get("/api/v1/jobs")
 def jobs() -> list[dict]:
     return repo.list_jobs()

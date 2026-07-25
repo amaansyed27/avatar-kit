@@ -8,5 +8,12 @@ $py = (& py -3.12 -c "import sys; print(sys.executable)" 2>$null); if (-not $py)
 $venv = Join-Path $env:AVATARKIT_HOME 'environments\backend'; if ($Repair -and (Test-Path $venv)) { Remove-Item -Recurse -Force $venv }; if (-not (Test-Path "$venv\Scripts\python.exe")) { & py -3.12 -m venv $venv }
 & "$venv\Scripts\python.exe" -m pip install --upgrade pip; & "$venv\Scripts\python.exe" -m pip install -e "$root\backend[dev]"
 Push-Location "$root\frontend"; npm install; npm run build; Pop-Location
-Write-Host "Core setup complete. Engine/model downloads are explicit and large; run doctor.ps1, then install from Diagnostics or setup.ps1 -InstallModels after reviewing terms."
+if ($InstallModels) {
+  $apiPython = "$venv\Scripts\python.exe"
+  Push-Location "$root\backend"
+  & $apiPython -c "from app.engines.sadtalker import SadTalkerAvatarEngine as E; E().install(); E().ensure_models()"
+  & $apiPython -c "from app.engines.chatterbox import ChatterboxVoiceEngine as E; E().install(); E().ensure_models()"
+  Pop-Location
+}
+Write-Host "Core setup complete. Use -InstallModels to install verified upstream engines and their large model files."
 Write-Host "Start: $root\scripts\windows\start.ps1"
