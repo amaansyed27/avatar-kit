@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'; $root = (Resolve-Path "$PSScriptRoot\..\..").Path; if (-not $env:AVATARKIT_HOME) { $env:AVATARKIT_HOME = Join-Path $root '.avatarkit' }; $python = Join-Path $env:AVATARKIT_HOME 'environments\backend\Scripts\python.exe'
+$ErrorActionPreference = 'Stop'; $root = (Resolve-Path "$PSScriptRoot\..\..").Path; $legacyData = Join-Path $env:USERPROFILE '.avatarkit'; if (-not $env:AVATARKIT_HOME -or $env:AVATARKIT_HOME -eq $legacyData) { $env:AVATARKIT_HOME = Join-Path $root '.avatarkit' }; $python = Join-Path $env:AVATARKIT_HOME 'environments\backend\Scripts\python.exe'
 if (-not (Test-Path $python)) { throw 'Run scripts\windows\setup.ps1 first.' }
 try { if ((Invoke-WebRequest http://127.0.0.1:7866/api/v1/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { Start-Process 'http://127.0.0.1:7865'; exit } } catch {}
 $proc = Start-Process $python -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','7866' -WorkingDirectory "$root\backend" -PassThru -WindowStyle Hidden; Set-Content (Join-Path $env:AVATARKIT_HOME 'backend.pid') $proc.Id
