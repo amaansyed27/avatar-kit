@@ -25,7 +25,7 @@ class SadTalkerAvatarEngine(Engine):
         return ensure_data_dirs()["engines"] / self.engine_id
 
     def _python(self) -> Path:
-        return ensure_data_dirs()["environments"] / self.engine_id / "Scripts" / "python.exe"
+        return ensure_data_dirs()["environments"] / "sadtalker-py39" / "Scripts" / "python.exe"
 
     def status(self) -> EngineStatus:
         installed = (self._root() / "inference.py").exists() and self._python().exists()
@@ -46,7 +46,7 @@ class SadTalkerAvatarEngine(Engine):
         subprocess.run(["git", "-C", str(root), "checkout", self.revision], check=True)
         python = self._python()
         if not python.exists():
-            subprocess.run(["py", "-3.8", "-m", "venv", str(python.parent.parent)], check=True)
+            subprocess.run(["py", "-3.9", "-m", "venv", str(python.parent.parent)], check=True)
         subprocess.run([str(python), "-m", "pip", "install", "--upgrade", "pip"], check=True)
         # Official SadTalker requirements build extensions that import torch at build time.
         # Install a CUDA-capable wheel first; users selecting CPU can still pass --device cpu.
@@ -56,11 +56,11 @@ class SadTalkerAvatarEngine(Engine):
                 "-m",
                 "pip",
                 "install",
-                "torch==2.4.1",
-                "torchvision==0.19.1",
-                "torchaudio==2.4.1",
+                "torch==2.7.1+cu128",
+                "torchvision==0.22.1+cu128",
+                "torchaudio==2.7.1+cu128",
                 "--index-url",
-                "https://download.pytorch.org/whl/cu124",
+                "https://download.pytorch.org/whl/cu128",
             ],
             check=True,
         )

@@ -55,6 +55,15 @@ class ChatterboxVoiceEngine(Engine):
         # upstream repository; the PyPI metadata resolves an incompatible Perth build on Windows.
         subprocess.run([str(python), "-m", "pip", "install", "--upgrade", "pip"], check=True)
         subprocess.run([str(python), "-m", "pip", "install", "--force-reinstall", str(root)], check=True)
+        # Chatterbox pins Torch 2.6, which has no CUDA 12.8 wheel for RTX 50 GPUs.
+        # Its public API remains compatible with the newer supported CUDA build.
+        subprocess.run(
+            [
+                str(python), "-m", "pip", "install", "--upgrade", "--no-deps",
+                "torch==2.7.1+cu128", "torchaudio==2.7.1+cu128",
+                "--index-url", "https://download.pytorch.org/whl/cu128",
+            ], check=True,
+        )
         return self.status()
 
     def ensure_models(self) -> EngineStatus:
