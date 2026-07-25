@@ -2,5 +2,10 @@ $ErrorActionPreference = 'Stop'; $root = (Resolve-Path "$PSScriptRoot\..\..").Pa
 if (-not (Test-Path $python)) { throw 'Run scripts\windows\setup.ps1 first.' }
 try { if ((Invoke-WebRequest http://127.0.0.1:7866/api/v1/health -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { Start-Process 'http://127.0.0.1:7865'; exit } } catch {}
 $proc = Start-Process $python -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','7866' -WorkingDirectory "$root\backend" -PassThru -WindowStyle Hidden; Set-Content (Join-Path $env:AVATARKIT_HOME 'backend.pid') $proc.Id
-Push-Location "$root\frontend"; Start-Process npm -ArgumentList 'run','dev','--','--host','127.0.0.1','--port','7865' -PassThru -WindowStyle Hidden | ForEach-Object { Set-Content (Join-Path $env:AVATARKIT_HOME 'frontend.pid') $_.Id }; Pop-Location
-Start-Sleep -Seconds 2; Start-Process 'http://127.0.0.1:7865'; Write-Host 'AvatarKit: http://127.0.0.1:7865'
+$node = (Get-Command node -ErrorAction Stop).Source; $vite = Join-Path $root 'frontend\node_modules\vite\bin\vite.js'
+if (-not (Test-Path $vite)) { throw 'Frontend dependencies are missing. Run setup.ps1 first.' }
+$frontend = Start-Process $node -ArgumentList $vite,'preview','--host','127.0.0.1','--port','7865','--strictPort' -WorkingDirectory "$root\frontend" -PassThru -WindowStyle Hidden
+Set-Content (Join-Path $env:AVATARKIT_HOME 'frontend.pid') $frontend.Id
+$ready = $false; for ($attempt = 0; $attempt -lt 20; $attempt++) { try { if ((Invoke-WebRequest http://127.0.0.1:7865 -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200) { $ready = $true; break } } catch { Start-Sleep -Milliseconds 500 } }
+if (-not $ready) { throw 'AvatarKit frontend did not become ready. Run doctor.ps1 and check the frontend build.' }
+Start-Process 'http://127.0.0.1:7865'; Write-Host 'AvatarKit: http://127.0.0.1:7865'
