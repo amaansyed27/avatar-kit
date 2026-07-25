@@ -48,6 +48,22 @@ class SadTalkerAvatarEngine(Engine):
         if not python.exists():
             subprocess.run(["py", "-3.8", "-m", "venv", str(python.parent.parent)], check=True)
         subprocess.run([str(python), "-m", "pip", "install", "--upgrade", "pip"], check=True)
+        # Official SadTalker requirements build extensions that import torch at build time.
+        # Install a CUDA-capable wheel first; users selecting CPU can still pass --device cpu.
+        subprocess.run(
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "torch==2.4.1",
+                "torchvision==0.19.1",
+                "torchaudio==2.4.1",
+                "--index-url",
+                "https://download.pytorch.org/whl/cu124",
+            ],
+            check=True,
+        )
         subprocess.run([str(python), "-m", "pip", "install", "-r", str(root / "requirements.txt")], check=True)
         return self.status()
 
