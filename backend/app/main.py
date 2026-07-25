@@ -6,7 +6,7 @@ import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -97,8 +97,27 @@ def jobs() -> list[dict]:
 @app.post("/api/v1/jobs", status_code=201)
 async def create_job(request: JobRequest) -> dict:
     job = manager.create(request.workflow, request.preset, request.watermark)
-    asyncio.create_task(manager.run_real_avatar(job["id"]))
     return job
+
+
+@app.post("/api/v1/jobs/{job_id}/inputs/{kind}")
+async def upload_input(job_id: str, kind: str, file: UploadFile = File(...)) -> dict:  # noqa: B008
+    if not file.filename:
+        raise HTTPException(422, "A file name is required")
+    try:
+        job = manager.store_input(job_id, kind, file.filename, await file.read())
+        return job
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/api/v1/jobs/{job_id}/start")
+async def start_job(job_id: str) -> dict:
+    job = repo.job(job_id)
+    if not job: raise HTTPException(404, "Job not found")
+    if job["state"] not in {"created", "failed"}: raise HTTPException(409, "Job has already started")
+    asyncio.create_task(manager.run_real_avatar(job_id))
+    return repo.update_job(job_id, state="queued", phase="Queued") or job
 
 
 @app.get("/api/v1/jobs/{job_id}")

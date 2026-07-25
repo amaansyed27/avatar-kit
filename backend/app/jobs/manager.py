@@ -46,6 +46,22 @@ class JobManager:
         self.events[job_id] = asyncio.Queue()
         return self.repo.create_job(job)
 
+    def store_input(self, job_id: str, kind: str, filename: str, content: bytes) -> dict:
+        job = self.repo.job(job_id)
+        if not job or kind not in {"portrait", "audio", "reference"}:
+            raise ValueError("Unknown job or input kind")
+        suffix = Path(filename).suffix.lower()
+        allowed = {"portrait": {".png", ".jpg", ".jpeg", ".webp"}, "audio": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".webm"}, "reference": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".webm"}}
+        if suffix not in allowed[kind] or not content:
+            raise ValueError("Unsupported or empty media file")
+        path = ensure_data_dirs()["jobs"] / job_id / f"{kind}{suffix}"
+        path.write_bytes(content)
+        if kind == "portrait":
+            self.media.validate_image(path); return self.repo.update_job(job_id, portrait_path=str(path)) or job
+        duration = self.media.validate_audio(path)
+        if duration <= 0: raise ValueError("Audio duration is invalid")
+        return self.repo.update_job(job_id, audio_path=str(path)) or job
+
     async def emit(
         self, job_id: str, phase: str, state: str | None = None, message: str | None = None
     ) -> None:
@@ -97,11 +113,28 @@ class JobManager:
                     error_message="Required local engines or models are missing.",
                 )
                 return
+            job = self.repo.job(job_id)
+            if not job or not job["portrait_path"] or not job["audio_path"]:
+                await self.emit(job_id, "Awaiting valid local inputs", "failed")
+                self.repo.update_job(job_id, error_code="MISSING_INPUT", error_message="Add a portrait and audio before generating.")
+                return
+            await self.emit(job_id, "Normalizing audio", "running")
+            job_dir = ensure_data_dirs()["jobs"] / job_id; audio = job_dir / "normalized.wav"
+            self.media.normalize_audio(Path(job["audio_path"]), audio)
+            output_dir = job_dir / "sadtalker-output"; output_dir.mkdir(exist_ok=True)
+            engine = self.engines["sadtalker"]
+            command = [str(engine._python()), str(engine._root() / "inference.py"), "--driven_audio", str(audio), "--source_image", job["portrait_path"], "--result_dir", str(output_dir), "--still", "--preprocess", "crop"]
             await self.emit(job_id, "Running face animation", "running")
-            # The engine-specific command is intentionally gated by verified installation/model checks.
-            await self.emit(job_id, "Engine invocation not yet verified on this host", "failed")
-            self.repo.update_job(
-                job_id,
-                error_code="ENGINE_INVOCATION_UNVERIFIED",
-                error_message="Run doctor and the real-engine smoke test after installing pinned SadTalker models.",
-            )
+            process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            with Path(job["log_path"]).open("w", encoding="utf-8") as log:  # noqa: ASYNC230
+                assert process.stdout
+                async for line in process.stdout:
+                    log.write(line.decode(errors="replace"))
+            if await process.wait() != 0:
+                raise RuntimeError("SadTalker exited with an error; open the local log from History.")
+            videos = sorted(output_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if not videos: raise RuntimeError("SadTalker did not produce an MP4 output.")
+            destination = ensure_data_dirs()["outputs"] / f"{job_id}.mp4"; shutil.copy2(videos[0], destination)
+            await self.emit(job_id, "Verifying output", "running"); self.media.verify_output(destination)
+            self.repo.update_job(job_id, state="completed", phase="Complete", output_path=str(destination))
+            await self.emit(job_id, "Complete", "completed")
