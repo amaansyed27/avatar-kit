@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import data_home, ensure_data_dirs
@@ -104,6 +104,21 @@ def jobs() -> list[dict]:
     return repo.list_jobs()
 
 
+@app.get("/api/v1/library")
+def library() -> dict:
+    return manager.library_summary()
+
+
+@app.delete("/api/v1/jobs")
+def clear_jobs(scope: str = "all") -> dict:
+    if scope not in {"all", "failed"}:
+        raise HTTPException(422, "Scope must be all or failed")
+    try:
+        return {"deleted": manager.clear(scope), "summary": manager.library_summary()}
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+
 @app.post("/api/v1/jobs", status_code=201)
 async def create_job(request: JobRequest) -> dict:
     job = manager.create(request.workflow, request.preset, request.watermark)
@@ -147,6 +162,9 @@ async def cancel(job_id: str) -> dict:
 
 @app.delete("/api/v1/jobs/{job_id}", status_code=204)
 def delete(job_id: str) -> None:
+    job = repo.job(job_id)
+    if job and job["state"] in {"validating", "queued", "running", "cancelling"}:
+        raise HTTPException(409, "Cancel the active generation before deleting it")
     if not manager.delete(job_id):
         raise HTTPException(404, "Job not found")
 
@@ -171,6 +189,24 @@ def output(job_id: str) -> FileResponse:
     if not path or not path.is_file():
         raise HTTPException(404, "Output is missing")
     return FileResponse(path, media_type="video/mp4", filename=path.name)
+
+
+@app.get("/api/v1/jobs/{job_id}/portrait")
+def portrait(job_id: str) -> FileResponse:
+    job = repo.job(job_id)
+    path = Path(job["portrait_path"]) if job and job["portrait_path"] else None
+    if not path or not path.is_file():
+        raise HTTPException(404, "Portrait is missing")
+    return FileResponse(path)
+
+
+@app.get("/api/v1/jobs/{job_id}/log", response_class=PlainTextResponse)
+def job_log(job_id: str) -> str:
+    job = repo.job(job_id)
+    path = Path(job["log_path"]) if job and job["log_path"] else None
+    if not path or not path.is_file():
+        raise HTTPException(404, "Log is missing")
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 @app.get("/api/v1/settings")

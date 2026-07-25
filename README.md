@@ -24,6 +24,8 @@ Open `http://127.0.0.1:7865`. Use **Diagnostics** to inspect actual local availa
 2. Use **Existing speech** for audio containing the exact words, or **Clone from text** with a clean 10–30 second reference.
 3. Choose Fast test, Balanced, or Best quality; watermarking is enabled by default.
 4. Confirm you own or have consent for the face and voice, then generate once Diagnostics reports verified engines/models.
+5. Use **Library** to play, download, inspect logs for, or delete local generations.
+6. Use **Settings** to choose compute and quality defaults, enforce local file limits, copy the output path, or clear incomplete/all generation data without removing models.
 
 All media must remain local. Only explicit engine/model installation uses the network. Delete a job to remove associated local files; generated history detects missing files rather than crashing.
 

@@ -44,3 +44,40 @@ def test_background_failure_is_persisted(tmp_path, monkeypatch):
     assert failed["state"] == "failed"
     assert failed["error_code"] == "GENERATION_FAILED"
     assert failed["error_message"] == "engine exploded"
+
+
+def test_clear_removes_job_output_and_log(tmp_path, monkeypatch):
+    monkeypatch.setenv("AVATARKIT_HOME", str(tmp_path))
+    manager = JobManager(Repository(tmp_path / "jobs.sqlite3"))
+    job = manager.create("speech", "fast", False)
+    output = tmp_path / "outputs" / f"{job['id']}.mp4"
+    log = tmp_path / "logs" / f"{job['id']}.log"
+    output.write_bytes(b"video")
+    log.write_text("engine log", encoding="utf-8")
+    manager.repo.update_job(
+        job["id"],
+        state="completed",
+        phase="Complete",
+        output_path=str(output),
+    )
+
+    assert manager.clear("all") == 1
+    assert manager.repo.list_jobs() == []
+    assert not output.exists()
+    assert not log.exists()
+    assert not (tmp_path / "jobs" / job["id"]).exists()
+
+
+def test_upload_limit_is_enforced_before_writing(tmp_path, monkeypatch):
+    monkeypatch.setenv("AVATARKIT_HOME", str(tmp_path))
+    manager = JobManager(Repository(tmp_path / "jobs.sqlite3"))
+    manager.repo.update_settings({"max_upload_mb": 1})
+    job = manager.create("speech", "fast", False)
+
+    try:
+        manager.store_input(job["id"], "portrait", "large.png", b"x" * (1024 * 1024 + 1))
+    except ValueError as exc:
+        assert "1 MB" in str(exc)
+    else:
+        raise AssertionError("Oversized upload was accepted")
+    assert not (tmp_path / "jobs" / job["id"] / "portrait.png").exists()

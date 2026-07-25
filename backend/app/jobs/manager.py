@@ -66,6 +66,10 @@ class JobManager:
         job = self.repo.job(job_id)
         if not job or kind not in {"portrait", "audio", "reference"}:
             raise ValueError("Unknown job or input kind")
+        settings = self.repo.settings()
+        maximum_bytes = int(settings["max_upload_mb"]) * 1024 * 1024
+        if len(content) > maximum_bytes:
+            raise ValueError(f"File exceeds the {settings['max_upload_mb']} MB local upload limit")
         suffix = Path(filename).suffix.lower()
         allowed = {"portrait": {".png", ".jpg", ".jpeg", ".webp"}, "audio": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".webm"}, "reference": {".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".webm"}}
         if suffix not in allowed[kind] or not content:
@@ -75,7 +79,13 @@ class JobManager:
         if kind == "portrait":
             self.media.validate_image(path); return self.repo.update_job(job_id, portrait_path=str(path)) or job
         duration = self.media.validate_audio(path)
-        if duration <= 0: raise ValueError("Audio duration is invalid")
+        if duration <= 0:
+            raise ValueError("Audio duration is invalid")
+        if duration > int(settings["max_audio_seconds"]):
+            path.unlink(missing_ok=True)
+            raise ValueError(
+                f"Audio exceeds the {settings['max_audio_seconds']} second local limit"
+            )
         return self.repo.update_job(job_id, audio_path=str(path)) or job
 
     async def emit(
@@ -179,14 +189,56 @@ class JobManager:
         job_dir = ensure_data_dirs()["jobs"] / job_id
         if job_dir.exists():
             shutil.rmtree(job_dir)
-        for key in ("portrait_path", "audio_path", "output_path"):
+        dirs = ensure_data_dirs()
+        for key in ("output_path", "log_path"):
             value = job.get(key)
             if value:
                 path = Path(value)
-                if path.exists() and str(path).startswith(str(ensure_data_dirs()["outputs"])):
+                allowed_root = dirs["outputs"] if key == "output_path" else dirs["logs"]
+                if path.exists() and path.is_relative_to(allowed_root):
                     path.unlink()
         self.repo.delete_job(job_id)
+        self.events.pop(job_id, None)
         return True
+
+    def clear(self, scope: str) -> int:
+        jobs = self.repo.list_jobs()
+        active_states = {"validating", "queued", "running", "cancelling"}
+        if any(job["state"] in active_states for job in jobs):
+            raise RuntimeError("Wait for or cancel the active generation before clearing history.")
+        selected = (
+            jobs
+            if scope == "all"
+            else [job for job in jobs if job["state"] in {"failed", "cancelled", "created"}]
+        )
+        for job in selected:
+            self.delete(job["id"])
+        return len(selected)
+
+    def library_summary(self) -> dict:
+        jobs = self.repo.list_jobs()
+        counts = {
+            "total": len(jobs),
+            "completed": 0,
+            "active": 0,
+            "failed": 0,
+        }
+        output_bytes = 0
+        for job in jobs:
+            if job["state"] == "completed":
+                counts["completed"] += 1
+            elif job["state"] in {"validating", "queued", "running", "cancelling"}:
+                counts["active"] += 1
+            elif job["state"] in {"failed", "cancelled"}:
+                counts["failed"] += 1
+            output_path = job.get("output_path")
+            if output_path and Path(output_path).is_file():
+                output_bytes += Path(output_path).stat().st_size
+        return {
+            **counts,
+            "output_bytes": output_bytes,
+            "data_directory": str(ensure_data_dirs()["outputs"]),
+        }
 
     async def run_real_avatar(self, job_id: str) -> None:
         """Reserved for SadTalker subprocess orchestration after engine/model readiness.
