@@ -18,6 +18,7 @@ class JobManager:
         self.engines = {"sadtalker": SadTalkerAvatarEngine(), "chatterbox": ChatterboxVoiceEngine()}
         self.lock = asyncio.Lock()
         self.events: dict[str, asyncio.Queue[dict]] = {}
+        self.processes: dict[str, asyncio.subprocess.Process] = {}
 
     def all_engines_ready(self) -> bool:
         return all(e.status().installed and e.status().models_ready for e in self.engines.values())
@@ -76,6 +77,15 @@ class JobManager:
             return None
         if job["state"] in ("completed", "failed", "cancelled"):
             return job
+        process = self.processes.get(job_id)
+        if process and process.returncode is None:
+            await self.emit(job_id, "Stopping engine process", "cancelling")
+            process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=8)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
         await self.emit(job_id, "Cancelled", "cancelled")
         return self.repo.job(job_id)
 
@@ -123,15 +133,24 @@ class JobManager:
             self.media.normalize_audio(Path(job["audio_path"]), audio)
             output_dir = job_dir / "sadtalker-output"; output_dir.mkdir(exist_ok=True)
             engine = self.engines["sadtalker"]
+            settings = self.repo.settings()
             command = [str(engine._python()), str(engine._root() / "inference.py"), "--driven_audio", str(audio), "--source_image", job["portrait_path"], "--result_dir", str(output_dir), "--still", "--preprocess", "crop"]
+            if settings.get("device") == "cpu": command += ["--device", "cpu"]
+            if job["preset"] == "fast": command += ["--size", "256"]
+            if job["preset"] == "best": command += ["--size", "512"]
+            if job["watermark"]: command += ["--verbose"]
             await self.emit(job_id, "Running face animation", "running")
             process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-            with Path(job["log_path"]).open("w", encoding="utf-8") as log:  # noqa: ASYNC230
-                assert process.stdout
-                async for line in process.stdout:
-                    log.write(line.decode(errors="replace"))
-            if await process.wait() != 0:
-                raise RuntimeError("SadTalker exited with an error; open the local log from History.")
+            self.processes[job_id] = process
+            try:
+                with Path(job["log_path"]).open("w", encoding="utf-8") as log:  # noqa: ASYNC230
+                    assert process.stdout
+                    async for line in process.stdout:
+                        log.write(line.decode(errors="replace"))
+                if await process.wait() != 0:
+                    raise RuntimeError("SadTalker exited with an error; open the local log from History.")
+            finally:
+                self.processes.pop(job_id, None)
             videos = sorted(output_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
             if not videos: raise RuntimeError("SadTalker did not produce an MP4 output.")
             destination = ensure_data_dirs()["outputs"] / f"{job_id}.mp4"; shutil.copy2(videos[0], destination)
