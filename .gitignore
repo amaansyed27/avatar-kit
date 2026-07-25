@@ -9,3 +9,4 @@ __pycache__/
 runtime/
 .avatarkit/
 /gfpgan/
+.playwright-cli/

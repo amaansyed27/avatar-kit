@@ -84,6 +84,43 @@ class FFmpegService:
         if result.returncode:
             raise MediaError("AUDIO_NORMALIZATION_FAILED")
 
+    def add_watermark(self, source: Path, destination: Path) -> None:
+        if not self.ffmpeg:
+            raise MediaError("FFMPEG_UNAVAILABLE")
+        font = Path("C:/Windows/Fonts/arial.ttf")
+        if not font.is_file():
+            raise MediaError("WATERMARK_FONT_UNAVAILABLE")
+        escaped_font = str(font).replace(":", r"\:")
+        video_filter = (
+            "drawbox=x=w-124:y=h-40:w=112:h=28:color=black@0.62:t=fill,"
+            f"drawtext=fontfile='{escaped_font}':text='AI GENERATED':"
+            "fontcolor=white:fontsize=14:x=w-tw-18:y=h-th-18"
+        )
+        result = subprocess.run(
+            [
+                self.ffmpeg,
+                "-y",
+                "-i",
+                str(source),
+                "-vf",
+                video_filter,
+                "-c:v",
+                "libx264",
+                "-crf",
+                "18",
+                "-preset",
+                "fast",
+                "-c:a",
+                "copy",
+                str(destination),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            raise MediaError("WATERMARK_FAILED")
+
     def verify_output(self, path: Path) -> dict:
         if not path.exists() or path.stat().st_size < 1024:
             raise MediaError("INVALID_OUTPUT")

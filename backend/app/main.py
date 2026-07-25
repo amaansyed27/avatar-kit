@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import platform
 import shutil
 from contextlib import asynccontextmanager
@@ -40,6 +41,7 @@ class SettingsPatch(BaseModel):
 async def lifespan(_: FastAPI):
     ensure_data_dirs()
     yield
+    await manager.shutdown()
 
 
 app = FastAPI(title="AvatarKit", version="0.1.0", lifespan=lifespan)
@@ -124,8 +126,7 @@ async def start_job(job_id: str) -> dict:
     job = repo.job(job_id)
     if not job: raise HTTPException(404, "Job not found")
     if job["state"] not in {"created", "failed"}: raise HTTPException(409, "Job has already started")
-    asyncio.create_task(manager.run_real_avatar(job_id))
-    return repo.update_job(job_id, state="queued", phase="Queued") or job
+    return manager.start(job_id)
 
 
 @app.get("/api/v1/jobs/{job_id}")
@@ -158,7 +159,7 @@ async def events(job_id: str) -> StreamingResponse:
     async def stream():
         while True:
             event = await manager.events.setdefault(job_id, asyncio.Queue()).get()
-            yield f"data: {event}\n\n"
+            yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
