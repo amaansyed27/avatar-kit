@@ -1,0 +1,1 @@
+if (-not $env:AVATARKIT_HOME) { $env:AVATARKIT_HOME = Join-Path $env:USERPROFILE '.avatarkit' }; foreach ($name in 'backend.pid','frontend.pid') { $file = Join-Path $env:AVATARKIT_HOME $name; if (Test-Path $file) { $id = Get-Content $file; $proc = Get-Process -Id $id -ErrorAction SilentlyContinue; if ($proc) { Stop-Process -Id $id -Force }; Remove-Item $file -Force } }
