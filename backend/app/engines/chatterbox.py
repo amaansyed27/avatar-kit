@@ -35,8 +35,8 @@ class ChatterboxVoiceEngine(Engine):
         return EngineStatus(
             self.engine_id,
             self.display_name,
-            models_ready,
             installed,
+            models_ready,
             "Chatterbox downloads its model cache on explicit first synthesis.",
             self.revision,
         )
