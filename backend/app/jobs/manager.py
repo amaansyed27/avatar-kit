@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -140,7 +141,31 @@ class JobManager:
             if job["preset"] == "best": command += ["--size", "512"]
             if job["watermark"]: command += ["--verbose"]
             await self.emit(job_id, "Running face animation", "running")
-            process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+            bundled_ffmpeg = next(
+                (
+                    engine._python().parent.parent
+                    / "Lib"
+                    / "site-packages"
+                    / "imageio_ffmpeg"
+                    / "binaries"
+                ).glob("ffmpeg*.exe"),
+                None,
+            )
+            process_env = os.environ.copy()
+            if bundled_ffmpeg:
+                managed_dir = ensure_data_dirs()["engines"] / "ffmpeg"
+                managed_dir.mkdir(parents=True, exist_ok=True)
+                managed_ffmpeg = managed_dir / "ffmpeg.exe"
+                if not managed_ffmpeg.is_file():
+                    shutil.copy2(bundled_ffmpeg, managed_ffmpeg)
+                process_env["PATH"] = f"{managed_dir}{os.pathsep}{process_env.get('PATH', '')}"
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                cwd=str(engine._root()),
+                env=process_env,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
             self.processes[job_id] = process
             try:
                 with Path(job["log_path"]).open("w", encoding="utf-8") as log:  # noqa: ASYNC230

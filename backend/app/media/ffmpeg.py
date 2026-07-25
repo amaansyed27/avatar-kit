@@ -5,6 +5,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from app.core.config import ensure_data_dirs
+
 
 class MediaError(RuntimeError):
     pass
@@ -12,7 +14,8 @@ class MediaError(RuntimeError):
 
 class FFmpegService:
     def __init__(self) -> None:
-        self.ffmpeg = shutil.which("ffmpeg")
+        managed = ensure_data_dirs()["engines"] / "ffmpeg" / "ffmpeg.exe"
+        self.ffmpeg = str(managed) if managed.is_file() else shutil.which("ffmpeg")
         self.ffprobe = shutil.which("ffprobe")
 
     def available(self) -> bool:

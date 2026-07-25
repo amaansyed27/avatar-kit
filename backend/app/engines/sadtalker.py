@@ -74,6 +74,22 @@ class SadTalkerAvatarEngine(Engine):
         # Keep the last compatible binary wheel to avoid an unreliable local C build.
         subprocess.run([str(python), "-m", "pip", "install", "lmdb==1.4.1"], check=True)
         subprocess.run([str(python), "-m", "pip", "install", "-r", str(root / "requirements.txt")], check=True)
+        # BasicSR 1.4.2 imports a torchvision module removed in modern CUDA builds.
+        # The public rgb_to_grayscale function remains available at this stable location.
+        degradation = (
+            python.parent.parent
+            / "Lib"
+            / "site-packages"
+            / "basicsr"
+            / "data"
+            / "degradations.py"
+        )
+        if degradation.is_file():
+            original = "from torchvision.transforms.functional_tensor import rgb_to_grayscale"
+            replacement = "from torchvision.transforms.functional import rgb_to_grayscale"
+            source = degradation.read_text(encoding="utf-8")
+            if original in source:
+                degradation.write_text(source.replace(original, replacement), encoding="utf-8")
         return self.status()
 
     def ensure_models(self) -> EngineStatus:

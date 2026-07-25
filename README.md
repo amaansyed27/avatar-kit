@@ -16,7 +16,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\windows\start.ps1
 ```
 
-Open `http://127.0.0.1:7865`. Use **Diagnostics** to inspect actual local availability. Runtime files are under `.avatarkit` inside this repository by default; set `AVATARKIT_HOME` before setup to change it. `stop.ps1` stops only recorded AvatarKit process IDs; `clean-cache.ps1` retains jobs, outputs, models, and the database.
+Open `http://127.0.0.1:7865`. Use **Diagnostics** to inspect actual local availability. Runtime files are under `backend\.avatarkit` inside this repository by default; set `AVATARKIT_HOME` before setup to change it. `stop.ps1` stops only recorded AvatarKit process IDs; `clean-cache.ps1` retains jobs, outputs, models, and the database.
 
 ## Using it
 
