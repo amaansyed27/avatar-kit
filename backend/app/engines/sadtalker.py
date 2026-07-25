@@ -64,6 +64,9 @@ class SadTalkerAvatarEngine(Engine):
             ],
             check=True,
         )
+        # Current lmdb releases no longer publish a CPython 3.8 Windows wheel.
+        # Keep the last compatible binary wheel to avoid an unreliable local C build.
+        subprocess.run([str(python), "-m", "pip", "install", "lmdb==1.4.1"], check=True)
         subprocess.run([str(python), "-m", "pip", "install", "-r", str(root / "requirements.txt")], check=True)
         return self.status()
 

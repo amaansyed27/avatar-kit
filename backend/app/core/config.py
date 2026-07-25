@@ -7,7 +7,8 @@ from pathlib import Path
 def data_home() -> Path:
     """Return the only location AvatarKit writes user media and runtime state."""
     configured = os.environ.get("AVATARKIT_HOME")
-    return Path(configured) if configured else Path.home() / ".avatarkit"
+    # Local project default: keeps all generated state on the same drive as the repository.
+    return Path(configured) if configured else Path(__file__).resolve().parents[3] / ".avatarkit"
 
 
 def ensure_data_dirs() -> dict[str, Path]:
