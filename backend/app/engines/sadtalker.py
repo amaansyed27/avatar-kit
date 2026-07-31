@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from app.core.config import ensure_data_dirs
-from app.engines.base import Engine, EngineStatus
+from app.engines.base import Engine, EngineStatus, venv_python
 
 
 class SadTalkerAvatarEngine(Engine):
@@ -25,7 +25,7 @@ class SadTalkerAvatarEngine(Engine):
         return ensure_data_dirs()["engines"] / self.engine_id
 
     def _python(self) -> Path:
-        return ensure_data_dirs()["environments"] / "sadtalker-py39" / "Scripts" / "python.exe"
+        return venv_python(ensure_data_dirs()["environments"] / "sadtalker-py39")
 
     def status(self) -> EngineStatus:
         installed = (self._root() / "inference.py").exists() and self._python().exists()

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -26,3 +28,10 @@ class Engine(ABC):
 
     @abstractmethod
     def ensure_models(self) -> EngineStatus: ...
+
+
+def venv_python(environment: Path) -> Path:
+    """Return the interpreter path for a virtual environment on this platform."""
+    if os.name == "nt":
+        return environment / "Scripts" / "python.exe"
+    return environment / "bin" / "python"

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from app.core.config import ensure_data_dirs
-from app.engines.base import Engine, EngineStatus
+from app.engines.base import Engine, EngineStatus, venv_python
 
 
 class ChatterboxVoiceEngine(Engine):
@@ -17,7 +17,7 @@ class ChatterboxVoiceEngine(Engine):
     languages: ClassVar[tuple[dict[str, str], ...]] = ({"id": "en", "name": "English"},)
 
     def _python(self) -> Path:
-        return ensure_data_dirs()["environments"] / self.engine_id / "Scripts" / "python.exe"
+        return venv_python(ensure_data_dirs()["environments"] / self.engine_id)
 
     def _root(self) -> Path:
         return ensure_data_dirs()["engines"] / self.engine_id
