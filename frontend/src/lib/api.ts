@@ -1,5 +1,6 @@
 const root = "/api/v1";
 export type Engine = { engine_id: string; display_name: string; installed: boolean; models_ready: boolean; detail: string };
+export type EngineOperation = { id: string; engine_id: string; action: string; state: "queued" | "running" | "completed" | "failed"; phase: string; started_at: string; finished_at?: string | null; error?: string | null };
 export type Job = { id: string; state: string; phase: string; workflow: string; preset: string; watermark: number; created_at: string; portrait_path?: string; output_path?: string; error_message?: string };
 export type LibrarySummary = { total: number; completed: number; active: number; failed: number; output_bytes: number; data_directory: string };
 export type Settings = { default_preset: string; watermark_enabled: boolean; max_upload_mb: number; max_audio_seconds: number; device: string; cleanup_failed: boolean; open_after_generation: boolean; log_level: string };

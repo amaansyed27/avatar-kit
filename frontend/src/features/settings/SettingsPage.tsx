@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import {
   Check,
+  ArrowRight,
   ClipboardText,
   Cpu,
+  Cube,
+  DownloadSimple,
   FloppyDisk,
   FolderOpen,
   Gauge,
@@ -21,7 +24,7 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
 }
 
-export function SettingsPage({ summary, onChanged }: { summary: LibrarySummary; onChanged: () => void }) {
+export function SettingsPage({ summary, onChanged, onOpenModels }: { summary: LibrarySummary; onChanged: () => void; onOpenModels: () => void }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -125,6 +128,11 @@ export function SettingsPage({ summary, onChanged }: { summary: LibrarySummary; 
       </div>
 
       <aside className="settings-side">
+        <section className="model-settings-panel">
+          <div className="settings-panel-heading"><span className="settings-icon"><Cube size={20} /></span><div><h2>Models & engines</h2><p>Install AI components and follow every download from one place.</p></div></div>
+          <button className="settings-link-row" type="button" onClick={onOpenModels}><span><strong>Manage local models</strong><small>Setup, status, storage estimates, and live logs</small></span><ArrowRight size={18} /></button>
+        </section>
+
         <section className="storage-panel">
           <div className="settings-panel-heading"><span className="settings-icon"><HardDrives size={20} /></span><div><h2>Generated media</h2><p>Models are never removed by cleanup.</p></div></div>
           <div className="storage-stats">
@@ -145,6 +153,12 @@ export function SettingsPage({ summary, onChanged }: { summary: LibrarySummary; 
           <div className="settings-panel-heading"><span className="settings-icon danger"><Warning size={20} /></span><div><h2>Cleanup</h2><p>Remove local history and media without touching installed engines or models.</p></div></div>
           <button type="button" onClick={() => void clear("failed")}>Clear incomplete jobs</button>
           <button className="danger-button" type="button" onClick={() => void clear("all")}><Trash size={17} /> Clear all generations</button>
+        </section>
+
+        <section className="support-panel">
+          <div className="settings-panel-heading"><span className="settings-icon"><DownloadSimple size={20} /></span><div><h2>Support bundle</h2><p>Export local troubleshooting information before reporting a problem.</p></div></div>
+          <div className="support-actions"><a href="/api/v1/logs/download" download><DownloadSimple size={17} /> Download all logs</a><a href="/api/v1/diagnostics/report" download><ClipboardText size={17} /> Diagnostic report</a></div>
+          <p>Logs can contain local file paths and engine errors. Review them before sharing.</p>
         </section>
       </aside>
     </div>}

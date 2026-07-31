@@ -132,7 +132,7 @@ export function HistoryPage({ onChanged, onCreate }: { onChanged: () => void; on
 
     {log && <div className="modal-backdrop" role="presentation" onClick={() => setLog(null)}>
       <section className="log-modal" role="dialog" aria-modal="true" aria-label="Generation log" onClick={event => event.stopPropagation()}>
-        <header><div><span className="eyebrow">Local engine log</span><h2>Job #{log.id.slice(0, 8)}</h2></div><button className="card-icon-button" type="button" aria-label="Close log" onClick={() => setLog(null)}><X size={19} /></button></header>
+        <header><div><span className="eyebrow">Local engine log</span><h2>Job #{log.id.slice(0, 8)}</h2></div><div className="log-modal-actions"><a href={`/api/v1/jobs/${log.id}/log/download`} download><DownloadSimple size={17} /> Download log</a><button className="card-icon-button" type="button" aria-label="Close log" onClick={() => setLog(null)}><X size={19} /></button></div></header>
         <pre>{log.content}</pre>
       </section>
     </div>}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   GearSix,
   HardDrives,
+  Cube,
   Moon,
   PlusSquare,
   Pulse,
@@ -13,16 +14,18 @@ import { CreatePage } from "./features/generator/CreatePage";
 import { HistoryPage } from "./features/history/HistoryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { DiagnosticsPage } from "./features/diagnostics/DiagnosticsPage";
+import { ModelsPage } from "./features/models/ModelsPage";
 import { api } from "./lib/api";
 import type { Engine, LibrarySummary } from "./lib/api";
 import "./index.css";
 
-type PageName = "Create" | "History" | "Settings" | "Diagnostics";
+type PageName = "Create" | "History" | "Models" | "Settings" | "Diagnostics";
 type ThemeName = "dark" | "paper";
 
 const navigation = [
   { id: "Create" as const, label: "Create", icon: PlusSquare },
   { id: "History" as const, label: "Library", icon: SquaresFour },
+  { id: "Models" as const, label: "Models", icon: Cube },
   { id: "Settings" as const, label: "Settings", icon: GearSix },
   { id: "Diagnostics" as const, label: "Diagnostics", icon: Pulse },
 ];
@@ -30,6 +33,7 @@ const navigation = [
 const pageDetails: Record<PageName, { title: string; description: string }> = {
   Create: { title: "New avatar", description: "Portrait and voice workspace" },
   History: { title: "Library", description: "Your local generations" },
+  Models: { title: "Models", description: "Engines, downloads, and setup logs" },
   Settings: { title: "Settings", description: "Defaults, storage, and privacy" },
   Diagnostics: { title: "Diagnostics", description: "Runtime and engine health" },
 };
@@ -97,8 +101,8 @@ export default function App() {
   return <div className="app-shell" data-theme={theme}>
     <aside className="sidebar">
       <button className="brand-lockup" type="button" onClick={() => setCurrent("Create")} aria-label="Open AvatarKit Create">
-        <span>Avatar<span>Kit</span></span>
-        <small>LOCAL-FIRST</small>
+        <img src="/favicon.png" alt="" />
+        <span><b>Avatar<span>Kit</span></b><small>LOCAL CREATIVE AI</small></span>
       </button>
 
       <nav className="primary-nav" aria-label="Workspace">
@@ -109,6 +113,7 @@ export default function App() {
             key={item.id}
             type="button"
             className={current === item.id ? "nav-item active" : "nav-item"}
+            aria-label={item.label}
             aria-current={current === item.id ? "page" : undefined}
             onClick={() => setCurrent(item.id)}
           >
@@ -129,7 +134,7 @@ export default function App() {
 
       <footer className="privacy-note">
         <span><ShieldCheck size={17} weight="fill" /> Local processing</span>
-        <small>No accounts · No telemetry</small>
+        <small>No accounts · No telemetry · v0.1.1</small>
       </footer>
     </aside>
 
@@ -165,7 +170,8 @@ export default function App() {
       <div className="page-scroll">
         {current === "Create" && <CreatePage engines={engines} checkingEngines={!enginesLoaded} onOpenLibrary={() => setCurrent("History")} />}
         {current === "History" && <HistoryPage onChanged={() => void refreshSummary()} onCreate={() => setCurrent("Create")} />}
-        {current === "Settings" && <SettingsPage summary={summary} onChanged={() => void refreshSummary()} />}
+        {current === "Models" && <ModelsPage />}
+        {current === "Settings" && <SettingsPage summary={summary} onChanged={() => void refreshSummary()} onOpenModels={() => setCurrent("Models")} />}
         {current === "Diagnostics" && <DiagnosticsPage />}
       </div>
     </div>
