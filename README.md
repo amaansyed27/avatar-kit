@@ -36,8 +36,9 @@ See [the installation guide](docs/installation.md) for prerequisites, custom dir
 - Portrait plus text and a consented 10–30 second voice reference.
 - GPU-first or explicit CPU execution, selectable in Settings.
 - Persistent local generation library with playback, download, logs, and deletion.
+- Dedicated model manager with one-click setup, persistent background operations, live progress logs, and downloadable setup logs.
 - Dark cinematic and paper-beige light themes.
-- Local diagnostics, cancellable jobs, storage controls, FFmpeg validation, and visible AI watermarking.
+- Downloadable support bundles, local diagnostics, cancellable jobs, storage controls, FFmpeg validation, and visible AI watermarking.
 - Application/model data separated from source code for safe upgrades.
 
 AvatarKit never substitutes a fabricated result when an engine is unavailable. Diagnostics reports the actual state and generation remains blocked until both engines and their models are ready.
