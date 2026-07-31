@@ -1,53 +1,75 @@
-# AvatarKit v0.1.0
+# AvatarKit
 
-AvatarKit is a local-first Windows application for creating a talking-avatar MP4 from a portrait plus speech, or from a portrait, text, and a consented voice reference. It uses SadTalker for face animation and Chatterbox TTS for cloned speech. No accounts, keys, telemetry, or cloud inference are part of this application.
+Local-first talking-avatar software that turns a portrait and speech into an MP4. AvatarKit uses SadTalker for face animation and Chatterbox for consented voice cloning, with local history, diagnostics, compute controls, and no accounts or cloud inference.
 
-## Current status
+## Install
 
-The application shell, local API, persistent SQLite settings/history, diagnostics, FFmpeg validation, job states, cancellation endpoint, and Windows scripts are implemented. Real model generation is deliberately blocked until each official engine and its models have been explicitly installed and verified. It never substitutes a fabricated video for a missing engine.
-
-SadTalker is isolated because upstream documents Python 3.8; Chatterbox documents Python 3.11. The FastAPI application runs from its own Python 3.12 environment. Engine revisions and sources are recorded in `runners/*/manifest.json` and notices are in `NOTICE.md`.
-
-## Quick start (Windows)
+Windows 11 is the fully supported v0.1 platform. Install the core with one command:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
+irm https://raw.githubusercontent.com/amaansyed27/avatar-kit/master/install.ps1 | iex
+```
+
+Then start AvatarKit:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\AvatarKit\avatarkit.ps1" start
+```
+
+Open `http://127.0.0.1:7865`. Install the multi-gigabyte official engines and models only when you are ready:
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\AvatarKit\avatarkit.ps1" models
+```
+
+macOS/Linux core preview:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amaansyed27/avatar-kit/master/install.sh | bash
+```
+
+See [the installation guide](docs/installation.md) for prerequisites, custom directories, upgrades, diagnostics, and the precise platform support boundary.
+
+## What works in v0.1
+
+- Portrait plus existing speech to a talking-avatar MP4.
+- Portrait plus text and a consented 10–30 second voice reference.
+- GPU-first or explicit CPU execution, selectable in Settings.
+- Persistent local generation library with playback, download, logs, and deletion.
+- Dark cinematic and paper-beige light themes.
+- Local diagnostics, cancellable jobs, storage controls, FFmpeg validation, and visible AI watermarking.
+- Application/model data separated from source code for safe upgrades.
+
+AvatarKit never substitutes a fabricated result when an engine is unavailable. Diagnostics reports the actual state and generation remains blocked until both engines and their models are ready.
+
+## Requirements
+
+- Windows 11, Python 3.12, Node.js 22+, Git, and FFmpeg/ffprobe.
+- An NVIDIA GPU is recommended; CPU mode works but face animation and voice synthesis are substantially slower.
+- Model files are not bundled or committed. Upstream licenses and download sizes apply.
+
+The UI/API core is CI-tested on Windows, macOS, and Linux. Model installation and real inference are release-verified only on Windows in v0.1.
+
+## Develop and verify
+
+```powershell
+git clone https://github.com/amaansyed27/avatar-kit.git
+cd avatar-kit
 .\scripts\windows\setup.ps1 -SkipModels
+.\scripts\windows\verify.ps1
 .\scripts\windows\start.ps1
 ```
 
-Open `http://127.0.0.1:7865`. Use **Diagnostics** to inspect actual local availability. Runtime files are under `backend\.avatarkit` inside this repository by default; set `AVATARKIT_HOME` before setup to change it. `stop.ps1` stops only recorded AvatarKit process IDs; `clean-cache.ps1` retains jobs, outputs, models, and the database.
+Runtime files remain under `backend\.avatarkit` for a source checkout unless `AVATARKIT_HOME` is set. The public installer instead uses a separate persistent data directory.
 
-## Using it
+## Scope and roadmap
 
-1. On **Create**, add a clear, front-facing portrait.
-2. Use **Existing speech** for audio containing the exact words, or **Clone from text** with a clean 10–30 second reference.
-3. Choose Fast test, Balanced, or Best quality; watermarking is enabled by default.
-4. Confirm you own or have consent for the face and voice, then generate once Diagnostics reports verified engines/models.
-5. Use **Library** to play, download, inspect logs for, or delete local generations.
-6. Use **Settings** to choose compute and quality defaults, enforce local file limits, copy the output path, or clear incomplete/all generation data without removing models.
-
-All media must remain local. Only explicit engine/model installation uses the network. Delete a job to remove associated local files; generated history detects missing files rather than crashing.
-
-## Requirements and limits
-
-- Windows 11, Git, Node.js, Python 3.12, FFmpeg/ffprobe, and preferably NVIDIA CUDA.
-- RTX 5060 Laptop GPU (8 GB VRAM) is the target. Use **Fast test** if GPU memory is constrained.
-- Model files are intentionally not committed. Their sizes and licenses are upstream-specific and must be reviewed before download.
-- v0.1 does not include live avatars, webcam driving, full-body animation, MuseTalk, LivePortrait, Wav2Lip, cloud inference, accounts, sharing, or mobile apps.
-
-## Verification
-
-```powershell
-.\scripts\windows\verify.ps1
-```
-
-## Planned roadmap (not implemented)
-
-- v0.2 MuseTalk lip-sync; v0.3 LivePortrait expressions; v0.4 additional voice engines.
-- v0.5 video/full-body input; v0.6 real-time microphone/webcam; v0.7 dubbing/translation.
-- v1.0 local or BYOK conversational avatars.
+v0.1 does not include live avatars, webcam driving, full-body animation, translation, cloud inference, accounts, or sharing. Planned model expansion includes MuseTalk, LivePortrait, Wav2Lip, and additional local voice engines, followed by production packaging for all three desktop platforms.
 
 ## Privacy and responsible use
 
-AvatarKit is designed only for the user or people who have explicitly consented. It includes a required consent confirmation and a visible AI-generated watermark enabled by default. It does not include celebrity presets, identity discovery, scraping, or hidden watermark removal.
+Use AvatarKit only for yourself or people who have explicitly consented to use of their face and voice. The app requires a consent confirmation and enables a visible AI-generated watermark by default. It contains no celebrity presets, identity discovery, scraping, telemetry, or hidden watermark removal.
+
+## License
+
+AvatarKit source is MIT-licensed. SadTalker, Chatterbox, their dependencies, and downloaded model weights retain their respective upstream licenses. See [NOTICE.md](NOTICE.md).

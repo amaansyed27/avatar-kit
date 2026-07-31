@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".\backend[dev]"
+      - name: Verify backend
+        run: |
+          python -m ruff check backend
+          python -m pytest backend/tests
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Parse PowerShell installers
+        shell: pwsh
+        run: |
+          $errors = $null
+          Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object {
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            if ($errors) { $errors | Format-List; exit 1 }
+          }
+
+  verify-unix:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Validate shell scripts
+        run: bash -n install.sh scripts/unix/*.sh
+      - name: Install and verify core
+        env:
+          AVATARKIT_HOME: ${{ runner.temp }}/avatarkit-data
+        run: |
+          ./scripts/unix/setup.sh
+          "$AVATARKIT_HOME/environments/backend/bin/python" -m ruff check backend
+          "$AVATARKIT_HOME/environments/backend/bin/python" -m pytest backend/tests
+
