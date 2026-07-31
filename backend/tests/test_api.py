@@ -1,9 +1,11 @@
 import asyncio
+import json
 
 from fastapi.testclient import TestClient
 
 from app.core import config
 from app.db.repository import Repository
+from app.engines.operations import EngineOperationManager
 from app.jobs.manager import JobManager
 
 
@@ -81,3 +83,27 @@ def test_upload_limit_is_enforced_before_writing(tmp_path, monkeypatch):
     else:
         raise AssertionError("Oversized upload was accepted")
     assert not (tmp_path / "jobs" / job["id"] / "portrait.png").exists()
+
+
+def test_engine_operation_history_and_logs_are_persistent(tmp_path, monkeypatch):
+    monkeypatch.setenv("AVATARKIT_HOME", str(tmp_path))
+    operations = EngineOperationManager()
+    operation_id = "a" * 32
+    status = {
+        "id": operation_id,
+        "engine_id": "sadtalker",
+        "action": "setup",
+        "state": "completed",
+        "phase": "Ready",
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    (operations.directory / f"{operation_id}.json").write_text(
+        json.dumps(status), encoding="utf-8"
+    )
+    (operations.directory / f"{operation_id}.log").write_text(
+        "download complete", encoding="utf-8"
+    )
+
+    assert operations.get(operation_id) == status
+    assert operations.list() == [status]
+    assert operations.log_path(operation_id).read_text(encoding="utf-8") == "download complete"

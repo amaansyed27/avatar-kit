@@ -24,12 +24,7 @@ class ChatterboxVoiceEngine(Engine):
 
     def status(self) -> EngineStatus:
         python = self._python()
-        installed = python.exists()
-        if installed:
-            result = subprocess.run(
-                [str(python), "-c", "import chatterbox"], capture_output=True, text=True, check=False
-            )
-            installed = result.returncode == 0
+        installed = python.exists() and self._root().exists()
         cache = ensure_data_dirs()["models"] / "chatterbox"
         models_ready = installed and any(cache.rglob("*.safetensors"))
         return EngineStatus(

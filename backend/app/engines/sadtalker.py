@@ -29,12 +29,6 @@ class SadTalkerAvatarEngine(Engine):
 
     def status(self) -> EngineStatus:
         installed = (self._root() / "inference.py").exists() and self._python().exists()
-        if installed:
-            check = subprocess.run(
-                [str(self._python()), "-c", "import torch, face_alignment, gfpgan"],
-                capture_output=True, text=True, check=False,
-            )
-            installed = check.returncode == 0
         models = all((self._root() / "checkpoints" / filename).is_file() for filename in self.model_urls)
         return EngineStatus(
             self.engine_id,
@@ -98,6 +92,16 @@ class SadTalkerAvatarEngine(Engine):
             target = directory / filename
             if not target.is_file() or target.stat().st_size < 1024:
                 temporary = target.with_suffix(target.suffix + ".part")
-                urllib.request.urlretrieve(url, temporary)
+                print(f"Downloading {filename}...", flush=True)
+
+                def report(block: int, block_size: int, total: int) -> None:
+                    downloaded = min(block * block_size, total)
+                    if total > 0 and (block == 0 or block % 128 == 0 or downloaded == total):
+                        print(
+                            f"  {downloaded / 1024 / 1024:.1f} / {total / 1024 / 1024:.1f} MB",
+                            flush=True,
+                        )
+
+                urllib.request.urlretrieve(url, temporary, reporthook=report)
                 temporary.replace(target)
         return self.status()
