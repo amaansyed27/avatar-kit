@@ -12,6 +12,7 @@ import {
   Play,
   ShieldCheck,
   Sparkle,
+  SquaresFour,
   UploadSimple,
   VideoCamera,
   X,
@@ -53,7 +54,7 @@ function formatFileSize(file: File) {
     : `${(file.size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function CreatePage() {
+export function CreatePage({ engines, checkingEngines, onOpenLibrary }: { engines: Engine[]; checkingEngines: boolean; onOpenLibrary: () => void }) {
   const [portrait, setPortrait] = useState<File | null>(null);
   const [audio, setAudio] = useState<File | null>(null);
   const [reference, setReference] = useState<File | null>(null);
@@ -63,37 +64,13 @@ export function CreatePage() {
   const [watermark, setWatermark] = useState(true);
   const [consent, setConsent] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [engines, setEngines] = useState<Engine[]>([]);
-  const [checkingEngines, setCheckingEngines] = useState(true);
   const [job, setJob] = useState<Job | null>(null);
+  const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [error, setError] = useState("");
 
   const portraitUrl = useObjectUrl(portrait);
   const speechFile = mode === "speech" ? audio : reference;
   const speechUrl = useObjectUrl(speechFile);
-
-  useEffect(() => {
-    let active = true;
-    const load = () => api.get<Engine[]>("/engines")
-      .then(value => {
-        if (active) {
-          setEngines(value);
-          setCheckingEngines(false);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setCheckingEngines(false);
-          setError("The local backend is offline. Start AvatarKit, then try again.");
-        }
-      });
-    void load();
-    const timer = window.setInterval(load, 15000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, []);
 
   useEffect(() => {
     api.get<Settings>("/settings")
@@ -103,6 +80,13 @@ export function CreatePage() {
         setWatermark(value.watermark_enabled);
       })
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    const loadRecent = () => api.get<Job[]>("/jobs").then(value => setRecentJobs(value.slice(0, 3))).catch(() => undefined);
+    void loadRecent();
+    const timer = window.setInterval(() => void loadRecent(), 5000);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -302,6 +286,16 @@ export function CreatePage() {
       <span className="job-icon"><MagicWand size={21} /></span>
       <div><strong>{job.state === "completed" ? "Generation complete" : job.phase}</strong><small>Job #{job.id.slice(0, 8)}{job.error_message ? ` · ${job.error_message}` : ""}</small></div>
       {!finishedStates.includes(job.state) && <button type="button" onClick={async () => setJob(await api.post<Job>(`/jobs/${job.id}/cancel`))}>Cancel</button>}
+    </section>}
+
+    {recentJobs.length > 0 && <section className="recent-strip">
+      <div className="recent-strip-heading"><span><SquaresFour size={18} /><strong>Recent and queued</strong></span><button type="button" onClick={onOpenLibrary}>View library</button></div>
+      <div className="recent-items">{recentJobs.map(recent => <article key={recent.id}>
+        <div className="recent-thumb">{recent.portrait_path ? <img src={`/api/v1/jobs/${recent.id}/portrait`} alt="" /> : <VideoCamera size={20} />}</div>
+        <div><strong>{recent.workflow === "clone" ? "Cloned voice avatar" : "Recorded speech avatar"}</strong><small>{new Date(recent.created_at).toLocaleString()} · {recent.preset}</small></div>
+        <span className={`recent-state ${recent.state}`}>{recent.state === "completed" ? "Ready" : recent.phase}</span>
+        {recent.state === "completed" && <a href={`/api/v1/jobs/${recent.id}/output`} aria-label="Play recent generation"><Play size={15} weight="fill" /></a>}
+      </article>)}</div>
     </section>}
 
     {job?.state === "completed" && <section className="result-panel">

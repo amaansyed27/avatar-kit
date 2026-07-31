@@ -59,18 +59,26 @@ export default function App() {
   const [current, setCurrent] = useState<PageName>("Create");
   const [summary, setSummary] = useState<LibrarySummary>(emptySummary);
   const [engines, setEngines] = useState<Engine[]>([]);
+  const [enginesLoaded, setEnginesLoaded] = useState(false);
   const [theme, setTheme] = useState<ThemeName>(initialTheme);
 
   const refreshSummary = () => api.get<LibrarySummary>("/library").then(setSummary).catch(() => undefined);
-  const refreshEngines = () => api.get<Engine[]>("/engines").then(setEngines).catch(() => undefined);
+  const refreshEngines = () => api.get<Engine[]>("/engines")
+    .then(value => {
+      setEngines(value);
+      setEnginesLoaded(true);
+    })
+    .catch(() => setEnginesLoaded(true));
 
   useEffect(() => {
     void refreshSummary();
+    const timer = window.setInterval(() => void refreshSummary(), 4000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     void refreshEngines();
-    const timer = window.setInterval(() => {
-      void refreshSummary();
-      void refreshEngines();
-    }, 8000);
+    const timer = window.setInterval(() => void refreshEngines(), 60000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -138,7 +146,7 @@ export default function App() {
             onClick={() => setCurrent("Diagnostics")}
             title="Open diagnostics"
           >
-            <span className={`status-dot ${allEnginesReady ? "ready" : "warning"}`} />
+            <span className={`status-dot ${allEnginesReady ? "ready" : "warn"}`} />
             <span>{engines.length ? `${readyEngines}/${engines.length} engines ready` : "Checking engines"}</span>
           </button>
           <span className="local-chip"><ShieldCheck size={16} weight="fill" /> All processing is local</span>
@@ -155,7 +163,7 @@ export default function App() {
       </header>
 
       <div className="page-scroll">
-        {current === "Create" && <CreatePage />}
+        {current === "Create" && <CreatePage engines={engines} checkingEngines={!enginesLoaded} onOpenLibrary={() => setCurrent("History")} />}
         {current === "History" && <HistoryPage onChanged={() => void refreshSummary()} onCreate={() => setCurrent("Create")} />}
         {current === "Settings" && <SettingsPage summary={summary} onChanged={() => void refreshSummary()} />}
         {current === "Diagnostics" && <DiagnosticsPage />}

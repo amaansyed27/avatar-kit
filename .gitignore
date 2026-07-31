@@ -10,3 +10,4 @@ runtime/
 .avatarkit/
 /gfpgan/
 .playwright-cli/
+design-qa-evidence/
