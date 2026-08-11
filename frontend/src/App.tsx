@@ -15,8 +15,9 @@ import { HistoryPage } from "./features/history/HistoryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { DiagnosticsPage } from "./features/diagnostics/DiagnosticsPage";
 import { ModelsPage } from "./features/models/ModelsPage";
+import { SetupWizard } from "./features/setup/SetupWizard";
 import { api } from "./lib/api";
-import type { Engine, LibrarySummary } from "./lib/api";
+import type { Engine, LibrarySummary, Settings, StorageReport } from "./lib/api";
 import "./index.css";
 
 type PageName = "Create" | "History" | "Models" | "Settings" | "Diagnostics";
@@ -54,9 +55,7 @@ function formatBytes(bytes: number) {
 }
 
 function initialTheme(): ThemeName {
-  const saved = window.localStorage.getItem("avatarkit-theme");
-  if (saved === "dark" || saved === "paper") return saved;
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "paper" : "dark";
+  return "dark";
 }
 
 export default function App() {
@@ -65,6 +64,8 @@ export default function App() {
   const [engines, setEngines] = useState<Engine[]>([]);
   const [enginesLoaded, setEnginesLoaded] = useState(false);
   const [theme, setTheme] = useState<ThemeName>(initialTheme);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [storage, setStorage] = useState<StorageReport | null>(null);
 
   const refreshSummary = () => api.get<LibrarySummary>("/library").then(setSummary).catch(() => undefined);
   const refreshEngines = () => api.get<Engine[]>("/engines")
@@ -75,6 +76,7 @@ export default function App() {
     .catch(() => setEnginesLoaded(true));
 
   useEffect(() => {
+    void Promise.all([api.get<Settings>("/settings"), api.get<StorageReport>("/storage?quick=true")]).then(([nextSettings, nextStorage]) => { setSettings(nextSettings); setStorage(nextStorage); });
     void refreshSummary();
     const timer = window.setInterval(() => void refreshSummary(), 4000);
     return () => window.clearInterval(timer);
@@ -97,6 +99,9 @@ export default function App() {
   );
   const allEnginesReady = engines.length > 0 && readyEngines === engines.length;
   const details = pageDetails[current];
+
+  if (!settings || !storage) return <div className="app-loading"><span className="spinner" /><p>Opening AvatarKit…</p></div>;
+  if (!settings.setup_completed) return <SetupWizard settings={settings} storage={storage} engines={engines} onComplete={(saved, openModels) => { setSettings(saved); if (openModels) setCurrent("Models"); }} />;
 
   return <div className="app-shell" data-theme={theme}>
     <aside className="sidebar">
@@ -168,10 +173,10 @@ export default function App() {
       </header>
 
       <div className="page-scroll">
-        {current === "Create" && <CreatePage engines={engines} checkingEngines={!enginesLoaded} onOpenLibrary={() => setCurrent("History")} />}
+        {current === "Create" && <CreatePage engines={engines} checkingEngines={!enginesLoaded} onOpenLibrary={() => setCurrent("History")} onOpenModels={() => setCurrent("Models")} />}
         {current === "History" && <HistoryPage onChanged={() => void refreshSummary()} onCreate={() => setCurrent("Create")} />}
         {current === "Models" && <ModelsPage />}
-        {current === "Settings" && <SettingsPage summary={summary} onChanged={() => void refreshSummary()} onOpenModels={() => setCurrent("Models")} />}
+        {current === "Settings" && <SettingsPage summary={summary} onChanged={() => void refreshSummary()} onOpenModels={() => setCurrent("Models")} onRerunSetup={() => setSettings({ ...settings, setup_completed: false })} />}
         {current === "Diagnostics" && <DiagnosticsPage />}
       </div>
     </div>

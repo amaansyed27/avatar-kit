@@ -1,166 +1,66 @@
 import { useEffect, useState } from "react";
-import {
-  Check,
-  ArrowRight,
-  ClipboardText,
-  Cpu,
-  Cube,
-  DownloadSimple,
-  FloppyDisk,
-  FolderOpen,
-  Gauge,
-  HardDrives,
-  ImageSquare,
-  ShieldCheck,
-  Trash,
-  Warning,
-} from "@phosphor-icons/react";
+import { ArrowRight, Check, ClipboardText, Cpu, DownloadSimple, FloppyDisk, FolderOpen, Gauge, HardDrives, ShieldCheck, Trash, Warning } from "@phosphor-icons/react";
 import { api } from "../../lib/api";
-import type { LibrarySummary, Settings } from "../../lib/api";
+import type { LibrarySummary, Settings, StorageReport } from "../../lib/api";
 
-function formatBytes(bytes: number) {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
-}
+type Tab = "general" | "storage" | "privacy" | "support";
+const tabs: { id: Tab; label: string }[] = [{ id: "general", label: "General" }, { id: "storage", label: "Storage" }, { id: "privacy", label: "Privacy & limits" }, { id: "support", label: "Support" }];
+const formatBytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : bytes >= 1024 ** 2 ? `${(bytes / 1024 ** 2).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
 
-export function SettingsPage({ summary, onChanged, onOpenModels }: { summary: LibrarySummary; onChanged: () => void; onOpenModels: () => void }) {
+export function SettingsPage({ summary: _summary, onChanged, onOpenModels, onRerunSetup }: { summary: LibrarySummary; onChanged: () => void; onOpenModels: () => void; onRerunSetup: () => void }) {
+  const [tab, setTab] = useState<Tab>("general");
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [storage, setStorage] = useState<StorageReport | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    api.get<Settings>("/settings").then(setSettings).catch(() => setError("Could not load local settings."));
-  }, []);
+  const refreshStorage = () => api.get<StorageReport>("/storage").then(setStorage).catch(() => setError("Could not read local storage."));
+  useEffect(() => { void api.get<Settings>("/settings").then(setSettings); void refreshStorage(); }, []);
 
   const save = async () => {
     if (!settings) return;
-    setSaving(true);
-    try {
-      setSettings(await api.put<Settings>("/settings", settings));
-      setError("");
-      setMessage("Settings saved locally.");
-    } catch {
-      setError("Could not save local settings.");
-    } finally {
-      setSaving(false);
-    }
+    setSaving(true); setError("");
+    try { setSettings(await api.put<Settings>("/settings", settings)); await refreshStorage(); setMessage("Changes saved on this computer."); onChanged(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save settings."); }
+    finally { setSaving(false); }
   };
 
-  const clear = async (scope: "all" | "failed") => {
-    const wording = scope === "all"
-      ? `Delete all ${summary.total} jobs, generated videos, source copies, and logs? Models and settings will be kept.`
-      : "Delete failed, cancelled, and incomplete jobs plus their local files?";
-    if (!window.confirm(`${wording} This cannot be undone.`)) return;
-    try {
-      const result = await api.delete<{ deleted: number }>(`/jobs?scope=${scope}`);
-      setError("");
-      setMessage(`Deleted ${result.deleted} local ${result.deleted === 1 ? "job" : "jobs"}.`);
-      onChanged();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not clear local generations.");
-    }
+  const clearJobs = async (scope: "all" | "failed") => {
+    if (!window.confirm(scope === "all" ? "Delete every generation and its local media? Models and settings are kept." : "Delete failed and incomplete generations?")) return;
+    try { const result = await api.delete<{ deleted: number }>(`/jobs?scope=${scope}`); setMessage(`Deleted ${result.deleted} generation${result.deleted === 1 ? "" : "s"}.`); onChanged(); await refreshStorage(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Cleanup failed."); }
   };
 
-  const copyPath = () => {
-    void navigator.clipboard.writeText(summary.data_directory)
-      .then(() => setMessage("Output path copied."))
-      .catch(() => setError("Could not copy the output path."));
+  const clearCategory = async (id: string, label: string) => {
+    if (!window.confirm(`Clear ${label.toLowerCase()}? This cannot be undone.`)) return;
+    try { const result = await api.delete<{ removed_bytes: number; storage: StorageReport }>(`/storage/${id}`); setStorage(result.storage); setMessage(`Cleared ${formatBytes(result.removed_bytes)} from ${label.toLowerCase()}.`); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Cleanup failed."); }
   };
 
-  return <main className="settings-page">
-    <header className="page-heading">
-      <div><span className="eyebrow">Preferences and storage</span><h1>Local settings</h1><p>Set generation defaults and control what AvatarKit keeps on this machine.</p></div>
-      {settings && <button className="primary-small" type="button" disabled={saving} onClick={() => void save()}>{saving ? <span className="spinner" /> : <FloppyDisk size={18} />} {saving ? "Saving…" : "Save changes"}</button>}
-    </header>
+  const rerun = async () => { if (!settings) return; await api.put("/settings", { setup_completed: false }); onRerunSetup(); };
 
-    {message && <aside className="success"><Check size={17} weight="bold" /> {message}</aside>}
-    {error && <aside className="error">{error}</aside>}
+  return <main className="settings-page managed-settings">
+    <header className="page-heading"><div><span className="eyebrow">Control center</span><h1>Settings</h1><p>Everything AvatarKit stores and uses is under your control.</p></div>{settings && <button className="primary-small" disabled={saving} onClick={() => void save()}><FloppyDisk size={18} /> {saving ? "Saving…" : "Save changes"}</button>}</header>
+    {message && <aside className="success"><Check size={17} weight="bold" />{message}</aside>}{error && <aside className="error">{error}</aside>}
+    <div className="settings-tabs" role="tablist">{tabs.map(item => <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>{item.label}</button>)}</div>
 
-    {settings && <div className="settings-layout">
-      <div className="settings-main">
-        <section className="settings-panel">
-          <div className="settings-panel-heading"><span className="settings-icon"><Gauge size={20} /></span><div><h2>Generation defaults</h2><p>Applied whenever you open a new creation.</p></div></div>
-          <div className="form-grid">
-            <label className="field">
-              <span><ImageSquare size={16} /> Default quality</span>
-              <select value={settings.default_preset} onChange={event => setSettings({ ...settings, default_preset: event.target.value })}>
-                <option value="fast">Fast preview · 256px</option>
-                <option value="balanced">Balanced · recommended</option>
-                <option value="best">Best quality · 512px</option>
-              </select>
-              <small>Balanced is a good default for most modern GPUs.</small>
-            </label>
-            <label className="field">
-              <span><Cpu size={16} /> Preferred compute</span>
-              <select value={settings.device} onChange={event => setSettings({ ...settings, device: event.target.value })}>
-                <option value="auto">Auto · GPU preferred, CPU fallback</option>
-                <option value="cuda">NVIDIA CUDA only</option>
-                <option value="cpu">CPU only</option>
-              </select>
-              <small>CPU is fully supported but takes substantially longer.</small>
-            </label>
-          </div>
-          <div className="setting-rows">
-            <label className="switch-row">
-              <span><strong>Watermark by default</strong><small>Add a visible AI-generated label to new videos.</small></span>
-              <input type="checkbox" checked={settings.watermark_enabled} onChange={event => setSettings({ ...settings, watermark_enabled: event.target.checked })} />
-            </label>
-            <label className="switch-row">
-              <span><strong>Open completed output</strong><small>Open a generation automatically after it finishes.</small></span>
-              <input type="checkbox" checked={settings.open_after_generation} onChange={event => setSettings({ ...settings, open_after_generation: event.target.checked })} />
-            </label>
-            <label className="switch-row">
-              <span><strong>Clean failed work files</strong><small>Remove temporary files after an unsuccessful generation.</small></span>
-              <input type="checkbox" checked={settings.cleanup_failed} onChange={event => setSettings({ ...settings, cleanup_failed: event.target.checked })} />
-            </label>
-          </div>
-        </section>
-
-        <section className="settings-panel">
-          <div className="settings-panel-heading"><span className="settings-icon"><ShieldCheck size={20} /></span><div><h2>Upload limits</h2><p>Media outside these limits is rejected before generation.</p></div></div>
-          <div className="form-grid">
-            <label className="field"><span>Maximum file size</span><div className="unit-input"><input type="number" min="1" max="2048" value={settings.max_upload_mb} onChange={event => setSettings({ ...settings, max_upload_mb: Number(event.target.value) })} /><b>MB</b></div></label>
-            <label className="field"><span>Maximum audio length</span><div className="unit-input"><input type="number" min="1" max="7200" value={settings.max_audio_seconds} onChange={event => setSettings({ ...settings, max_audio_seconds: Number(event.target.value) })} /><b>seconds</b></div></label>
-          </div>
-        </section>
-      </div>
-
-      <aside className="settings-side">
-        <section className="model-settings-panel">
-          <div className="settings-panel-heading"><span className="settings-icon"><Cube size={20} /></span><div><h2>Models & engines</h2><p>Install AI components and follow every download from one place.</p></div></div>
-          <button className="settings-link-row" type="button" onClick={onOpenModels}><span><strong>Manage local models</strong><small>Setup, status, storage estimates, and live logs</small></span><ArrowRight size={18} /></button>
-        </section>
-
-        <section className="storage-panel">
-          <div className="settings-panel-heading"><span className="settings-icon"><HardDrives size={20} /></span><div><h2>Generated media</h2><p>Models are never removed by cleanup.</p></div></div>
-          <div className="storage-stats">
-            <div><strong>{summary.completed}</strong><span>Ready videos</span></div>
-            <div><strong>{summary.total}</strong><span>Total jobs</span></div>
-            <div><strong>{formatBytes(summary.output_bytes)}</strong><span>Video storage</span></div>
-          </div>
-          <div className="path-block">
-            <span><FolderOpen size={16} /> Output folder</span>
-            <code>{summary.data_directory || "Loading…"}</code>
-            <div>
-              <button type="button" onClick={copyPath}><ClipboardText size={16} /> Copy path</button>
-            </div>
-          </div>
-        </section>
-
-        <section className="cleanup-panel">
-          <div className="settings-panel-heading"><span className="settings-icon danger"><Warning size={20} /></span><div><h2>Cleanup</h2><p>Remove local history and media without touching installed engines or models.</p></div></div>
-          <button type="button" onClick={() => void clear("failed")}>Clear incomplete jobs</button>
-          <button className="danger-button" type="button" onClick={() => void clear("all")}><Trash size={17} /> Clear all generations</button>
-        </section>
-
-        <section className="support-panel">
-          <div className="settings-panel-heading"><span className="settings-icon"><DownloadSimple size={20} /></span><div><h2>Support bundle</h2><p>Export local troubleshooting information before reporting a problem.</p></div></div>
-          <div className="support-actions"><a href="/api/v1/logs/download" download><DownloadSimple size={17} /> Download all logs</a><a href="/api/v1/diagnostics/report" download><ClipboardText size={17} /> Diagnostic report</a></div>
-          <p>Logs can contain local file paths and engine errors. Review them before sharing.</p>
-        </section>
-      </aside>
+    {settings && tab === "general" && <div className="settings-stack">
+      <section className="settings-panel"><div className="settings-panel-heading"><span className="settings-icon"><Gauge size={20} /></span><div><h2>Generation quality</h2><p>The starting point for every new avatar.</p></div></div><div className="choice-grid three compact">{[["fast", "Fast", "Quick 256px previews"], ["balanced", "Balanced", "Recommended default"], ["best", "Best", "Higher-detail 512px"]].map(([value, title, copy]) => <button key={value} type="button" className={settings.default_preset === value ? "choice-card selected" : "choice-card"} onClick={() => setSettings({ ...settings, default_preset: value })}><strong>{title}</strong><small>{copy}</small></button>)}</div></section>
+      <section className="settings-panel"><div className="settings-panel-heading"><span className="settings-icon"><Cpu size={20} /></span><div><h2>Compute</h2><p>Choose which hardware is allowed to run models.</p></div></div><div className="choice-grid three compact">{[["auto", "Automatic", "GPU first, CPU fallback"], ["cuda", "NVIDIA GPU", "CUDA only"], ["cpu", "CPU only", "Compatible but slower"]].map(([value, title, copy]) => <button key={value} type="button" className={settings.device === value ? "choice-card selected" : "choice-card"} onClick={() => setSettings({ ...settings, device: value })}><strong>{title}</strong><small>{copy}</small></button>)}</div></section>
+      <section className="settings-panel setting-rows"><label className="switch-row"><span><strong>Open completed video</strong><small>Open the output automatically after generation.</small></span><input type="checkbox" checked={settings.open_after_generation} onChange={event => setSettings({ ...settings, open_after_generation: event.target.checked })} /></label><label className="switch-row"><span><strong>Watermark by default</strong><small>Mark new videos as AI-generated.</small></span><input type="checkbox" checked={settings.watermark_enabled} onChange={event => setSettings({ ...settings, watermark_enabled: event.target.checked })} /></label></section>
     </div>}
+
+    {settings && !storage && tab === "storage" && <section className="settings-panel storage-loading"><span className="spinner" /><div><strong>Calculating local storage…</strong><small>Scanning model, cache, and generation folders.</small></div></section>}
+    {settings && storage && tab === "storage" && <div className="settings-stack">
+      <section className="settings-panel storage-hero"><div><span className="settings-icon"><HardDrives size={20} /></span><div><h2>{formatBytes(storage.used_bytes)} used by AvatarKit</h2><p>{formatBytes(storage.free_bytes)} free on the data drive.</p></div></div><button className="secondary-button" onClick={onOpenModels}>Manage models <ArrowRight size={17} /></button></section>
+      <section className="settings-panel"><div className="settings-panel-heading"><span className="settings-icon"><FolderOpen size={20} /></span><div><h2>File locations</h2><p>Models and app data stay together; finished videos can go elsewhere.</p></div></div><label className="field"><span>Finished video folder</span><input value={settings.output_directory} placeholder={storage.output_directory} onChange={event => setSettings({ ...settings, output_directory: event.target.value })} /><small>Leave blank to use AvatarKit's default output folder.</small></label><div className="path-list"><div><span>App data & models</span><code>{storage.data_directory}</code><button aria-label="Copy app data path" onClick={() => void navigator.clipboard.writeText(storage.data_directory)}><ClipboardText size={16} /></button></div><div><span>Current video folder</span><code>{storage.output_directory}</code><button aria-label="Copy output path" onClick={() => void navigator.clipboard.writeText(storage.output_directory)}><ClipboardText size={16} /></button></div></div></section>
+      <section className="settings-panel"><div className="settings-panel-heading"><span className="settings-icon"><HardDrives size={20} /></span><div><h2>Storage breakdown</h2><p>Clear disposable data without touching models or finished work.</p></div></div><div className="storage-table">{storage.categories.map(category => <div key={category.id}><span><strong>{category.label}</strong><small>{formatBytes(category.bytes)}</small></span>{category.clearable ? <button onClick={() => void clearCategory(category.id, category.label)}>Clear</button> : <em>Managed</em>}</div>)}</div></section>
+      <section className="settings-panel danger-zone"><div><Warning size={20} /><span><strong>Generation cleanup</strong><small>These actions remove local library records and media.</small></span></div><div><button onClick={() => void clearJobs("failed")}>Clear incomplete</button><button className="danger-button" onClick={() => void clearJobs("all")}><Trash size={16} /> Clear all generations</button></div></section>
+    </div>}
+
+    {settings && tab === "privacy" && <div className="settings-stack"><section className="settings-panel"><div className="settings-panel-heading"><span className="settings-icon"><ShieldCheck size={20} /></span><div><h2>Local data policy</h2><p>No account, cloud upload, analytics, or telemetry.</p></div></div><div className="setting-rows"><label className="switch-row"><span><strong>Keep source files</strong><small>Retain uploaded portraits and audio with each job.</small></span><input type="checkbox" checked={settings.keep_source_files} onChange={event => setSettings({ ...settings, keep_source_files: event.target.checked })} /></label><label className="switch-row"><span><strong>Clean temporary files automatically</strong><small>Remove disposable working files after generation.</small></span><input type="checkbox" checked={settings.auto_cleanup_temp} onChange={event => setSettings({ ...settings, auto_cleanup_temp: event.target.checked })} /></label></div></section><section className="settings-panel"><div className="settings-panel-heading"><div><h2>Safety limits</h2><p>Reject oversized local media before a job starts.</p></div></div><div className="form-grid"><label className="field"><span>Maximum upload (MB)</span><input type="number" min="1" max="2048" value={settings.max_upload_mb} onChange={event => setSettings({ ...settings, max_upload_mb: Number(event.target.value) })} /></label><label className="field"><span>Maximum audio (seconds)</span><input type="number" min="1" max="7200" value={settings.max_audio_seconds} onChange={event => setSettings({ ...settings, max_audio_seconds: Number(event.target.value) })} /></label></div></section></div>}
+
+    {tab === "support" && <div className="settings-stack"><section className="settings-panel"><div className="settings-panel-heading"><span className="settings-icon"><DownloadSimple size={20} /></span><div><h2>Troubleshooting</h2><p>Export information when you need help.</p></div></div><div className="support-actions"><a href="/api/v1/logs/download" download><DownloadSimple size={17} /> Download logs</a><a href="/api/v1/diagnostics/report" download><ClipboardText size={17} /> Diagnostic report</a></div><p className="muted-copy">Review bundles before sharing—they may include local file paths and engine errors.</p></section><section className="settings-panel"><div className="settings-panel-heading"><div><h2>Setup</h2><p>Revisit storage, performance, and model choices.</p></div></div><button className="secondary-button" onClick={() => void rerun()}>Run setup again <ArrowRight size={17} /></button></section></div>}
   </main>;
 }
