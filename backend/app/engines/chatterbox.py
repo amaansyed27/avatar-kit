@@ -62,7 +62,9 @@ class ChatterboxVoiceEngine(Engine):
         return self.status()
 
     def ensure_models(self) -> EngineStatus:
-        python = self._python(); model_root = ensure_data_dirs()["models"] / "chatterbox"; model_root.mkdir(parents=True, exist_ok=True)
+        python = self._python()
+        model_root = ensure_data_dirs()["models"] / "chatterbox"
+        model_root.mkdir(parents=True, exist_ok=True)
         env = os.environ | {"HF_HOME": str(model_root)}
         code = "from chatterbox.tts import ChatterboxTTS; ChatterboxTTS.from_pretrained(device='cpu')"
         subprocess.run([str(python), "-c", code], check=True, env=env)

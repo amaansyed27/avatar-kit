@@ -10,6 +10,7 @@ from pathlib import Path
 from app.core.config import ensure_data_dirs
 
 DEFAULT_SETTINGS = {
+    "setup_completed": False,
     "default_preset": "balanced",
     "watermark_enabled": True,
     "max_upload_mb": 200,
@@ -18,6 +19,9 @@ DEFAULT_SETTINGS = {
     "cleanup_failed": True,
     "open_after_generation": False,
     "log_level": "info",
+    "output_directory": "",
+    "auto_cleanup_temp": True,
+    "keep_source_files": True,
 }
 
 
@@ -28,6 +32,7 @@ def now() -> str:
 class Repository:
     def __init__(self, database_path: Path | None = None) -> None:
         self.path = database_path or ensure_data_dirs()["database"] / "avatarkit.sqlite3"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
     @contextmanager
@@ -60,9 +65,10 @@ class Repository:
 
     def settings(self) -> dict:
         with self.connection() as con:
-            return json.loads(
+            stored = json.loads(
                 con.execute("SELECT value FROM settings WHERE id=1").fetchone()["value"]
             )
+        return DEFAULT_SETTINGS | stored
 
     def update_settings(self, patch: dict) -> dict:
         value = self.settings() | patch

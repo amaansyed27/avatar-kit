@@ -8,7 +8,7 @@ import traceback
 import uuid
 from pathlib import Path
 
-from app.core.config import ensure_data_dirs
+from app.core.config import ensure_data_dirs, output_home
 from app.db.repository import Repository, now
 from app.engines.chatterbox import ChatterboxVoiceEngine
 from app.engines.sadtalker import SadTalkerAvatarEngine
@@ -77,7 +77,8 @@ class JobManager:
         path = ensure_data_dirs()["jobs"] / job_id / f"{kind}{suffix}"
         path.write_bytes(content)
         if kind == "portrait":
-            self.media.validate_image(path); return self.repo.update_job(job_id, portrait_path=str(path)) or job
+            self.media.validate_image(path)
+            return self.repo.update_job(job_id, portrait_path=str(path)) or job
         duration = self.media.validate_audio(path)
         if duration <= 0:
             raise ValueError("Audio duration is invalid")
@@ -136,9 +137,28 @@ class JobManager:
                 error_code="GENERATION_FAILED",
                 error_message=message,
             )
+            if self.repo.settings().get("cleanup_failed"):
+                self._cleanup_work_files(job_id, keep_sources=True)
             await self.events.setdefault(job_id, asyncio.Queue()).put(
                 {"job": self.repo.job(job_id), "message": message}
             )
+
+    def _cleanup_work_files(self, job_id: str, keep_sources: bool) -> None:
+        job = self.repo.job(job_id)
+        job_dir = ensure_data_dirs()["jobs"] / job_id
+        if not job or not job_dir.is_dir():
+            return
+        if keep_sources:
+            for child in job_dir.iterdir():
+                if child.name.startswith(("portrait.", "audio.", "reference.")):
+                    continue
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            return
+        shutil.rmtree(job_dir)
+        self.repo.update_job(job_id, portrait_path=None, audio_path=None)
 
     async def _stop_process_tree(self, process: asyncio.subprocess.Process) -> None:
         if process.returncode is not None:
@@ -194,7 +214,7 @@ class JobManager:
             value = job.get(key)
             if value:
                 path = Path(value)
-                allowed_root = dirs["outputs"] if key == "output_path" else dirs["logs"]
+                allowed_root = output_home(self.repo.settings().get("output_directory")) if key == "output_path" else dirs["logs"]
                 if path.exists() and path.is_relative_to(allowed_root):
                     path.unlink()
         self.repo.delete_job(job_id)
@@ -237,7 +257,7 @@ class JobManager:
         return {
             **counts,
             "output_bytes": output_bytes,
-            "data_directory": str(ensure_data_dirs()["outputs"]),
+            "data_directory": str(output_home(self.repo.settings().get("output_directory"))),
         }
 
     async def run_real_avatar(self, job_id: str) -> None:
@@ -266,15 +286,20 @@ class JobManager:
                 self.repo.update_job(job_id, error_code="MISSING_INPUT", error_message="Add a portrait and audio before generating.")
                 return
             await self.emit(job_id, "Normalizing audio", "running")
-            job_dir = ensure_data_dirs()["jobs"] / job_id; audio = job_dir / "normalized.wav"
+            job_dir = ensure_data_dirs()["jobs"] / job_id
+            audio = job_dir / "normalized.wav"
             await asyncio.to_thread(self.media.normalize_audio, Path(job["audio_path"]), audio)
-            output_dir = job_dir / "sadtalker-output"; output_dir.mkdir(exist_ok=True)
+            output_dir = job_dir / "sadtalker-output"
+            output_dir.mkdir(exist_ok=True)
             engine = self.engines["sadtalker"]
             settings = self.repo.settings()
             command = [str(engine._python()), str(engine._root() / "inference.py"), "--driven_audio", str(audio), "--source_image", job["portrait_path"], "--result_dir", str(output_dir), "--still", "--preprocess", "crop"]
-            if settings.get("device") == "cpu": command += ["--device", "cpu"]
-            if job["preset"] == "fast": command += ["--size", "256"]
-            if job["preset"] == "best": command += ["--size", "512"]
+            if settings.get("device") == "cpu":
+                command += ["--device", "cpu"]
+            if job["preset"] == "fast":
+                command += ["--size", "256"]
+            if job["preset"] == "best":
+                command += ["--size", "512"]
             await self.emit(job_id, "Running face animation", "running")
             bundled_ffmpeg = next(
                 (
@@ -313,8 +338,9 @@ class JobManager:
             finally:
                 self.processes.pop(job_id, None)
             videos = sorted(output_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if not videos: raise RuntimeError("SadTalker did not produce an MP4 output.")
-            destination = ensure_data_dirs()["outputs"] / f"{job_id}.mp4"
+            if not videos:
+                raise RuntimeError("SadTalker did not produce an MP4 output.")
+            destination = output_home(settings.get("output_directory")) / f"{job_id}.mp4"
             if job["watermark"]:
                 await self.emit(job_id, "Adding AI-generated watermark", "running")
                 await asyncio.to_thread(self.media.add_watermark, videos[0], destination)
@@ -324,3 +350,5 @@ class JobManager:
             await asyncio.to_thread(self.media.verify_output, destination)
             self.repo.update_job(job_id, state="completed", phase="Complete", output_path=str(destination))
             await self.emit(job_id, "Complete", "completed")
+            if settings.get("auto_cleanup_temp"):
+                self._cleanup_work_files(job_id, keep_sources=settings.get("keep_source_files", True))

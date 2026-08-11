@@ -87,7 +87,8 @@ class SadTalkerAvatarEngine(Engine):
         return self.status()
 
     def ensure_models(self) -> EngineStatus:
-        directory = self._root() / "checkpoints"; directory.mkdir(parents=True, exist_ok=True)
+        directory = self._root() / "checkpoints"
+        directory.mkdir(parents=True, exist_ok=True)
         for filename, url in self.model_urls.items():
             target = directory / filename
             if not target.is_file() or target.stat().st_size < 1024:

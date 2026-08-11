@@ -28,3 +28,12 @@ def ensure_data_dirs() -> dict[str, Path]:
     for path in paths.values():
         path.mkdir(parents=True, exist_ok=True)
     return paths
+
+
+def output_home(configured: str | None = None) -> Path:
+    """Resolve and create the user-selected generation output directory."""
+    target = Path(configured).expanduser() if configured else ensure_data_dirs()["outputs"]
+    if configured and not target.is_absolute():
+        raise ValueError("Output directory must be an absolute path")
+    target.mkdir(parents=True, exist_ok=True)
+    return target.resolve()

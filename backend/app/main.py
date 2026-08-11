@@ -4,6 +4,7 @@ import asyncio
 import json
 import platform
 import shutil
+import tempfile
 import zipfile
 from contextlib import asynccontextmanager
 from io import BytesIO
@@ -14,14 +15,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.core.config import data_home, ensure_data_dirs
+from app.core.config import data_home, ensure_data_dirs, output_home
 from app.db.repository import Repository
 from app.engines.operations import EngineOperationManager
 from app.jobs.manager import JobManager
+from app.storage import StorageManager
 
 repo = Repository()
 manager = JobManager(repo)
 engine_operations = EngineOperationManager()
+storage_manager = StorageManager(repo)
 
 
 class JobRequest(BaseModel):
@@ -31,6 +34,7 @@ class JobRequest(BaseModel):
 
 
 class SettingsPatch(BaseModel):
+    setup_completed: bool | None = None
     default_preset: str | None = None
     watermark_enabled: bool | None = None
     max_upload_mb: int | None = Field(default=None, ge=1, le=2048)
@@ -39,6 +43,9 @@ class SettingsPatch(BaseModel):
     cleanup_failed: bool | None = None
     open_after_generation: bool | None = None
     log_level: str | None = None
+    output_directory: str | None = None
+    auto_cleanup_temp: bool | None = None
+    keep_source_files: bool | None = None
 
 
 @asynccontextmanager
@@ -98,9 +105,12 @@ def install(engine_id: str) -> dict:
 @app.post("/api/v1/engines/{engine_id}/models")
 def models(engine_id: str) -> dict:
     item = manager.engines.get(engine_id)
-    if not item: raise HTTPException(404, "Unknown engine")
-    try: return vars(item.ensure_models())
-    except Exception as exc: raise HTTPException(500, {"code": "MODEL_DOWNLOAD_FAILED", "detail": str(exc)}) from exc
+    if not item:
+        raise HTTPException(404, "Unknown engine")
+    try:
+        return vars(item.ensure_models())
+    except Exception as exc:
+        raise HTTPException(500, {"code": "MODEL_DOWNLOAD_FAILED", "detail": str(exc)}) from exc
 
 
 @app.post("/api/v1/engines/{engine_id}/setup", status_code=202)
@@ -176,8 +186,10 @@ async def upload_input(job_id: str, kind: str, file: UploadFile = File(...)) -> 
 @app.post("/api/v1/jobs/{job_id}/start")
 async def start_job(job_id: str) -> dict:
     job = repo.job(job_id)
-    if not job: raise HTTPException(404, "Job not found")
-    if job["state"] not in {"created", "failed"}: raise HTTPException(409, "Job has already started")
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job["state"] not in {"created", "failed"}:
+        raise HTTPException(409, "Job has already started")
     return manager.start(job_id)
 
 
@@ -280,7 +292,35 @@ def settings() -> dict:
 
 @app.put("/api/v1/settings")
 def update_settings(patch: SettingsPatch) -> dict:
-    return repo.update_settings(patch.model_dump(exclude_none=True))
+    values = patch.model_dump(exclude_none=True)
+    if "output_directory" in values:
+        configured = values["output_directory"].strip()
+        if configured:
+            try:
+                target = output_home(configured)
+                with tempfile.NamedTemporaryFile(prefix=".avatarkit-write-", dir=target):
+                    pass
+            except (OSError, ValueError) as exc:
+                raise HTTPException(422, f"Output directory is not writable: {exc}") from exc
+        values["output_directory"] = configured
+    return repo.update_settings(values)
+
+
+@app.get("/api/v1/storage")
+def storage(quick: bool = False) -> dict:
+    return storage_manager.report(quick=quick)
+
+
+@app.delete("/api/v1/storage/{category}")
+def clear_storage(category: str) -> dict:
+    if any(job["state"] in {"validating", "queued", "running", "cancelling"} for job in repo.list_jobs()):
+        raise HTTPException(409, "Wait for the active generation before clearing storage")
+    if any(operation["state"] in {"queued", "running"} for operation in engine_operations.list()):
+        raise HTTPException(409, "Wait for the active model setup before clearing storage")
+    try:
+        return storage_manager.clear(category)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/api/v1/diagnostics")

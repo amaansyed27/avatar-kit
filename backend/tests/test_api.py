@@ -7,6 +7,7 @@ from app.core import config
 from app.db.repository import Repository
 from app.engines.operations import EngineOperationManager
 from app.jobs.manager import JobManager
+from app.storage import StorageManager
 
 
 def test_health_and_settings(tmp_path, monkeypatch):
@@ -107,3 +108,58 @@ def test_engine_operation_history_and_logs_are_persistent(tmp_path, monkeypatch)
     assert operations.get(operation_id) == status
     assert operations.list() == [status]
     assert operations.log_path(operation_id).read_text(encoding="utf-8") == "download complete"
+
+
+def test_storage_report_and_clear_are_scoped(tmp_path, monkeypatch):
+    monkeypatch.setenv("AVATARKIT_HOME", str(tmp_path / "data"))
+    repo = Repository(tmp_path / "data" / "database" / "jobs.sqlite3")
+    storage = StorageManager(repo)
+    cache_file = config.ensure_data_dirs()["cache"] / "download.part"
+    cache_file.write_bytes(b"cached")
+
+    report = storage.report()
+    assert report["data_directory"] == str((tmp_path / "data").resolve())
+    assert next(item for item in report["categories"] if item["id"] == "cache")["bytes"] == 6
+    assert storage.clear("cache")["removed_bytes"] == 6
+    assert not cache_file.exists()
+
+    try:
+        storage.clear("models")
+    except ValueError as exc:
+        assert "Only cache" in str(exc)
+    else:
+        raise AssertionError("Model storage was cleared through the disposable-data endpoint")
+
+
+def test_custom_output_directory_is_used(tmp_path, monkeypatch):
+    monkeypatch.setenv("AVATARKIT_HOME", str(tmp_path / "data"))
+    repo = Repository(tmp_path / "data" / "database" / "jobs.sqlite3")
+    destination = tmp_path / "My Videos"
+    repo.update_settings({"output_directory": str(destination)})
+    manager = JobManager(repo)
+
+    assert manager.library_summary()["data_directory"] == str(destination.resolve())
+    assert destination.is_dir()
+
+
+def test_work_cleanup_preserves_or_removes_sources_by_policy(tmp_path, monkeypatch):
+    monkeypatch.setenv("AVATARKIT_HOME", str(tmp_path))
+    manager = JobManager(Repository(tmp_path / "database" / "jobs.sqlite3"))
+    job = manager.create("speech", "fast", False)
+    job_dir = tmp_path / "jobs" / job["id"]
+    portrait = job_dir / "portrait.png"
+    portrait.write_bytes(b"portrait")
+    (job_dir / "normalized.wav").write_bytes(b"temporary")
+    work = job_dir / "sadtalker-output"
+    work.mkdir()
+    (work / "work.mp4").write_bytes(b"temporary")
+    manager.repo.update_job(job["id"], portrait_path=str(portrait))
+
+    manager._cleanup_work_files(job["id"], keep_sources=True)
+    assert portrait.exists()
+    assert not (job_dir / "normalized.wav").exists()
+    assert not work.exists()
+
+    manager._cleanup_work_files(job["id"], keep_sources=False)
+    assert not job_dir.exists()
+    assert manager.repo.job(job["id"])["portrait_path"] is None
