@@ -62,7 +62,8 @@ switch (`$Command) {
     if ($backup -and (Test-Path -LiteralPath $backup)) { Remove-Item -LiteralPath $backup -Recurse -Force }
     Write-Host "Installed AvatarKit to $resolvedInstall"
     Write-Host "Data and models: $resolvedData"
-    Write-Host "Start: & '$launcher' start"
+    Write-Host 'Opening first-time setup. Choose output storage, compute, and model downloads in the app.'
+    & $launcher start
 } catch {
     if ($backup -and (Test-Path -LiteralPath $backup) -and -not (Test-Path -LiteralPath $resolvedInstall)) {
         Move-Item -LiteralPath $backup -Destination $resolvedInstall
